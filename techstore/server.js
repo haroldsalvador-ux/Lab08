@@ -26,4 +26,8 @@ app.use('/api', require('./src/routes/api'));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`TechStore escuchando en http://localhost:${port}`));
+const server = app.listen(port, () => console.log(`TechStore escuchando en http://localhost:${port}`));
+// Detrás de CloudFront: mantener las conexiones abiertas más tiempo que el proxy
+// para que no reutilice una conexión que Node ya cerró (peticiones colgadas / 502).
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
