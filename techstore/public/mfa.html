@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TechStore · Verificación MFA</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="center"><div class="card">
+  <div class="brand"><span>TS</span><b>TechStore</b></div>
+  <p class="sub">Autenticación multifactor (TOTP) <span id="idp" class="aws" hidden>Secreto generado por Amazon Cognito</span></p>
+
+  <div id="setup" style="display:none">
+    <p style="font-size:14px">Primer ingreso: escanea este código QR con <b>Google Authenticator</b> (o Microsoft Authenticator / Authy).</p>
+    <div class="qr"><img id="qr" alt="QR TOTP"></div>
+    <p style="font-size:12px;color:#64748b">Clave manual:</p>
+    <div class="secret" id="secret"></div>
+  </div>
+
+  <form id="f">
+    <label for="code">Código de 6 dígitos (cambia cada 30 s)</label>
+    <input id="code" class="code" inputmode="numeric" maxlength="6" pattern="\d{6}" required autocomplete="one-time-code">
+    <button type="submit">Verificar</button>
+  </form>
+  <div id="msg" class="msg"></div>
+  <p class="small"><a href="/">Cancelar</a></p>
+</div></div>
+<script src="common.js"></script>
+<script>
+  // El token puede venir del login local (sessionStorage) o del login social (fragmento #t=...).
+  const hash = new URLSearchParams(location.hash.slice(1));
+  if (hash.get('t')) { sessionStorage.setItem('mfaToken', hash.get('t')); history.replaceState(null, '', 'mfa.html' + (hash.get('setup') === '1' ? '?setup=1' : '')); }
+  const mfaToken = sessionStorage.getItem('mfaToken');
+  if (!mfaToken) location.href = '/';
+
+  if (new URLSearchParams(location.search).get('setup') === '1') {
+    api('/api/auth/mfa/setup', { method: 'POST', body: { mfaToken } }).then((r) => {
+      if (!r.ok) return showMsg($('#msg'), r.data.error);
+      $('#setup').style.display = 'block';
+      if (r.data.provider === 'cognito') $('#idp').hidden = false;
+      $('#qr').src = r.data.qr;
+      $('#secret').textContent = r.data.secret;
+    });
+  }
+
+  $('#f').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const r = await api('/api/auth/mfa/verify', { method: 'POST', body: { mfaToken, code: $('#code').value } });
+    if (!r.ok) {
+      $('#code').value = '';
+      if (r.data.remaining === 0 || r.status === 401 && r.data.remaining === undefined) {
+        sessionStorage.removeItem('mfaToken');
+        $('#f').querySelector('button').disabled = true;
+      }
+      return showMsg($('#msg'), r.data.error + (r.data.remaining ? ` (intentos restantes: ${r.data.remaining})` : ''));
+    }
+    sessionStorage.removeItem('mfaToken');
+    sessionStorage.setItem('token', r.data.token);
+    sessionStorage.setItem('user', JSON.stringify(r.data.user));
+    location.href = 'dashboard.html';
+  });
+</script>
+</body>
+</html>

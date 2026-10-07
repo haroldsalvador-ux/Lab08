@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.db
+*.log
+.DS_Store
+techstore/infra/state.env
+techstore/infra/state.env.tmp
+techstore/infra/.totp-prueba.json
+video/*.webm
+~$*.docx

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TechStore · Panel</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="top">
+  <div><b>TechStore</b> · Gestión de Inventario</div>
+  <div class="who" id="who"></div>
+  <button id="logout">Cerrar sesión</button>
+</div>
+<main>
+  <section class="panel"><h2>Permisos de tu rol</h2><div class="perm" id="perm"></div></section>
+  <section class="panel"><h2>Productos</h2><div id="products"></div><div id="pmsg" class="msg"></div></section>
+  <section class="panel" id="repSec"><h2>Reportes de inventario</h2><div id="reports"></div></section>
+  <section class="panel" id="usrSec"><h2>Usuarios y roles</h2><div id="users"></div></section>
+  <section class="panel" id="audSec"><h2>Bitácora de auditoría (últimos 50 eventos)</h2><div id="audit"></div></section>
+</main>
+<script src="common.js"></script>
+<script>
+  const token = sessionStorage.getItem('token');
+  const user = JSON.parse(sessionStorage.getItem('user') || 'null');
+  if (!token || !user) location.href = '/';
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const call = (p, o = {}) => api(p, { ...o, token });
+
+  $('#who').innerHTML = `${esc(user.fullName)} · ${esc(user.store)} <span class="pill">${esc(user.role)}</span>${user.provider === 'cognito' ? ' <span class="aws">Token: Amazon Cognito</span>' : ''}`;
+  $('#logout').onclick = () => { sessionStorage.clear(); location.href = '/'; };
+
+  const R = user.role;
+  const can = {
+    'Ver productos': true,
+    'Actualizar stock': ['ADMIN', 'GERENTE', 'EMPLEADO'].includes(R),
+    'Modificar precios': ['ADMIN', 'GERENTE'].includes(R),
+    'Eliminar productos': ['ADMIN', 'GERENTE'].includes(R),
+    'Ver reportes': ['ADMIN', 'GERENTE', 'AUDITOR'].includes(R),
+    'Gestionar usuarios/roles': R === 'ADMIN',
+  };
+  $('#perm').innerHTML = Object.entries(can).map(([k, v]) => `<div>${k}<br><span class="${v ? 'y' : 'n'}">${v ? '✔ Permitido' : '✖ Denegado'}</span></div>`).join('');
+
+  const table = (rows, cols) => rows.length
+    ? `<table><tr>${cols.map((c) => `<th>${c[0]}</th>`).join('')}</tr>${rows.map((r) => `<tr>${cols.map((c) => `<td>${c[1](r)}</td>`).join('')}</tr>`).join('')}</table>`
+    : '<p>Sin datos</p>';
+
+  async function loadProducts() {
+    const r = await call('/api/products');
+    $('#products').innerHTML = table(r.data, [
+      ['SKU', (p) => esc(p.sku)],
+      ['Producto', (p) => esc(p.name)],
+      ['Tienda', (p) => esc(p.store)],
+      ['Precio (S/)', (p) => `<input id="pr-${p.id}" type="number" step="0.01" value="${p.price}"> <button onclick="setPrice(${p.id})">Guardar</button>`],
+      ['Stock', (p) => `<input id="st-${p.id}" type="number" value="${p.stock}"> <button onclick="setStock(${p.id})">Actualizar</button>`],
+      ['', (p) => `<button class="del" onclick="del(${p.id})">Eliminar</button>`],
+    ]);
+  }
+  // Los botones se muestran a todos a propósito: el backend es quien aplica el control de acceso.
+  const report = (r) => { showMsg($('#pmsg'), `HTTP ${r.status} · ${r.data.message || r.data.error}`, r.ok); if (r.ok) refresh(); };
+  window.setPrice = async (id) => report(await call(`/api/products/${id}`, { method: 'PUT', body: { price: Number($('#pr-' + id).value) } }));
+  window.setStock = async (id) => report(await call(`/api/products/${id}/stock`, { method: 'PATCH', body: { stock: Number($('#st-' + id).value) } }));
+  window.del = async (id) => { if (confirm('¿Eliminar producto?')) report(await call(`/api/products/${id}`, { method: 'DELETE' })); };
+
+  async function loadReports() {
+    const r = await call('/api/reports');
+    $('#reports').innerHTML = r.ok
+      ? table(r.data, [['Tienda', (x) => esc(x.store)], ['Productos', (x) => x.productos], ['Unidades', (x) => x.unidades], ['Valor inventario (S/)', (x) => x.valor_inventario.toLocaleString('es-PE')]])
+      : `<p class="msg err" style="display:block">HTTP ${r.status} · ${esc(r.data.error)}</p>`;
+  }
+  async function loadUsers() {
+    const r = await call('/api/admin/users');
+    if (!r.ok) return ($('#users').innerHTML = `<p class="msg err" style="display:block">HTTP ${r.status} · ${esc(r.data.error)}</p>`);
+    const roles = ['ADMIN', 'GERENTE', 'EMPLEADO', 'AUDITOR'];
+    $('#users').innerHTML = table(r.data, [
+      ['Email', (u) => esc(u.email)], ['Nombre', (u) => esc(u.full_name)], ['Tienda', (u) => esc(u.store)],
+      ['Proveedor', (u) => esc(u.provider)], ['MFA', (u) => (u.mfa_enabled ? '✔' : '—')],
+      ['Bloqueo', (u) => (u.locked_until && u.locked_until > Date.now() ? `🔒 (${u.failed_attempts} intentos)` : `${u.failed_attempts} fallos`)],
+      ['Rol', (u) => R === 'ADMIN'
+        ? `<select onchange="setRole(${u.id}, this.value)">${roles.map((x) => `<option ${x === u.role ? 'selected' : ''}>${x}</option>`).join('')}</select>`
+        : esc(u.role)],
+      ['', (u) => (R === 'ADMIN' && u.locked_until ? `<button onclick="unlock(${u.id})">Desbloquear</button>` : '')],
+    ]);
+  }
+  window.setRole = async (id, role) => { report(await call(`/api/admin/users/${id}`, { method: 'PATCH', body: { role } })); };
+  window.unlock = async (id) => { report(await call(`/api/admin/users/${id}`, { method: 'PATCH', body: { unlock: true } })); };
+
+  async function loadAudit() {
+    const r = await call('/api/audit');
+    if (!r.ok) return ($('#audSec').style.display = 'none');
+    $('#audit').innerHTML = table(r.data, [['Fecha (UTC)', (a) => esc(a.ts)], ['Usuario', (a) => esc(a.email)], ['Acción', (a) => `<b>${esc(a.action)}</b>`], ['Detalle', (a) => esc(a.detail)]]);
+  }
+  function refresh() { loadProducts(); loadReports(); loadUsers(); loadAudit(); }
+  refresh();
+</script>
+</body>
+</html>
