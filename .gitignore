@@ -5,3 +5,4 @@ node_modules/
 backend/infra/state.env
 backend/infra/state.env.tmp
 ~$*.docx
+entregables/

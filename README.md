@@ -36,8 +36,6 @@ backend/
 ├── public/            login, registro y bienvenida
 ├── scripts/           listar usuarios (se ejecuta en EC2 con Systems Manager)
 └── infra/             despliegue en AWS con AWS CLI
-video/                 demostración
-GLAB-S08-TechStore.docx  informe
 ```
 
 ## Ejecutar en local
