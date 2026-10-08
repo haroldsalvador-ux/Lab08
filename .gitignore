@@ -1,0 +1,7 @@
+node_modules/
+.env
+*.db
+.DS_Store
+backend/infra/state.env
+backend/infra/state.env.tmp
+~$*.docx

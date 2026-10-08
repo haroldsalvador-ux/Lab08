@@ -1,0 +1,5 @@
+node_modules/
+.env
+*.db
+infra/state.env
+infra/state.env.tmp

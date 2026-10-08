@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TechStore · Bienvenido</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><span>TS</span><b>TechStore</b></div>
+    <p class="sub" id="titulo">Verificando sesión…</p>
+    <div id="datos"></div>
+    <div id="msg" class="msg"></div>
+    <a class="btn btn-pri" id="salir" href="/">Cerrar sesión</a>
+  </main>
+
+  <script>
+    // El token llega en el fragmento (#token=...) y se guarda solo en esta pestaña
+    const hash = new URLSearchParams(location.hash.slice(1));
+    if (hash.get('token')) { sessionStorage.setItem('token', hash.get('token')); history.replaceState(null, '', 'bienvenido.html'); }
+    const token = sessionStorage.getItem('token');
+    if (!token) location.href = '/';
+
+    document.getElementById('salir').addEventListener('click', () => sessionStorage.clear());
+
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const proveedor = { local: 'Email y contraseña', google: 'Google', github: 'GitHub' };
+
+    // Pide los datos al backend usando el token (ruta protegida)
+    fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } })
+      .then(async (r) => ({ ok: r.ok, data: await r.json() }))
+      .then(({ ok, data }) => {
+        if (!ok) { sessionStorage.clear(); location.href = '/'; return; }
+        const u = data.user;
+        titulo.innerHTML = `<b style="color:#16a34a">✔ Sesión iniciada</b>`;
+        datos.innerHTML = `
+          <div class="row"><b>Nombre</b><span>${esc(u.full_name)}</span></div>
+          <div class="row"><b>Email</b><span>${esc(u.email)}</span></div>
+          <div class="row"><b>Ingresó con</b><span>${esc(proveedor[u.provider] || u.provider)}</span></div>
+          <div class="row"><b>Rol</b><span class="pill">${esc(u.role)}</span></div>
+          <div class="row"><b>Tienda</b><span>${esc(u.store)}</span></div>
+          <p class="token"><b>Token JWT:</b><br>${esc(token)}</p>`;
+      });
+  </script>
+</body>
+</html>
